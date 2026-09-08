@@ -102,6 +102,32 @@ def check_backend() -> None:
         report(FAIL, "backend selection", str(exc)[:60])
 
 
+def check_audio() -> None:
+    section("Audible alert")
+    try:
+        from edge.alerts import DesktopAlertDriver
+        DesktopAlertDriver._pick_audio()
+    except Exception as exc:
+        report(NOTE, "buzzer", "unavailable (%s)" % str(exc)[:40])
+        return
+
+    if sys.platform.startswith("win"):
+        report(OK, "buzzer", "winsound tone")
+    elif sys.platform == "darwin":
+        import shutil
+        if shutil.which("afplay"):
+            report(OK, "buzzer", "afplay system alert sounds")
+        else:
+            report(NOTE, "buzzer", "afplay missing - falls back to terminal bell")
+    else:
+        import shutil
+        if shutil.which("paplay") or shutil.which("aplay"):
+            report(OK, "buzzer", "ALSA/PulseAudio")
+        else:
+            report(NOTE, "buzzer",
+                   "no sound player - install pulseaudio-utils or alsa-utils")
+
+
 def check_camera() -> None:
     section("Camera")
     try:
@@ -117,7 +143,13 @@ def check_camera() -> None:
         source = VideoSource(0, 640, 480, True, allow_synthetic=True)
         elapsed = time.time() - started
         if source.is_synthetic:
-            report(NOTE, "webcam", "none found - the demo uses a scripted operator")
+            if sys.platform == "darwin":
+                report(NOTE, "webcam",
+                       "none usable - on macOS check System Settings > Privacy "
+                       "& Security > Camera and enable your terminal app")
+            else:
+                report(NOTE, "webcam",
+                       "none found - the demo uses a scripted operator")
         else:
             ok, frame = source.read()
             detail = "%s, opened in %.1fs" % (source.description, elapsed)
@@ -148,8 +180,13 @@ def check_config_and_ports() -> None:
     in_use = probe.connect_ex((str(cfg.server.host), port)) == 0
     probe.close()
     if in_use:
-        report(NOTE, "server port %d" % port,
-               "already in use - a server may be running, or change server.port")
+        if sys.platform == "darwin" and port == 5000:
+            report(NOTE, "server port %d" % port,
+                   "busy - almost certainly the AirPlay Receiver; "
+                   "the demo moves to %d automatically" % (port + 1))
+        else:
+            report(NOTE, "server port %d" % port,
+                   "busy - the demo moves to %d automatically" % (port + 1))
     else:
         report(OK, "server port %d" % port, "free")
 
@@ -214,6 +251,7 @@ def main() -> int:
     check_packages()
     check_backend()
     check_camera()
+    check_audio()
     check_config_and_ports()
     check_engine()
 

@@ -51,6 +51,23 @@ your eyes for a second or two to drive the score up.
 | Post-shift report | <http://127.0.0.1:5000/report> |
 | Cabin HUD | opens as its own window |
 
+### Windows, macOS and Linux
+
+The same code runs on all three; `check_setup` reports what each machine
+selected. Two macOS-specific points, both handled automatically:
+
+- **Port 5000 is the AirPlay Receiver** on Monterey and later — the same port
+  Flask defaults to. The launcher detects this and moves the whole system to
+  5001, printing the URL it actually used. Nothing to configure.
+- **Camera access needs permission.** The first run triggers a macOS prompt;
+  the grant goes to the *terminal app*, not to Python. If the camera is
+  refused, check System Settings → Privacy & Security → Camera. Without it the
+  demo still runs on the scripted operator.
+
+The audible alert uses `winsound` on Windows, `afplay` on macOS and
+PulseAudio/ALSA on Linux, so the buzzer is genuinely audible on each rather
+than falling through to a terminal bell most terminals render silently.
+
 To run the 65 automated tests:
 
 ```bash

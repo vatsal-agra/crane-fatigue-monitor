@@ -25,6 +25,7 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from edge.config import load_config          # noqa: E402
+from server.app import pick_port             # noqa: E402
 
 PY = sys.executable
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -75,16 +76,29 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     cfg = load_config()
-    url = "http://%s:%d" % (cfg.server.host, int(cfg.server.port))
+    host = str(cfg.server.host)
+    requested = int(cfg.server.port)
+
+    # Settle the port before anything starts, so the server, the browser and
+    # the cabin unit all agree on it. On macOS the default 5000 is normally
+    # held by the AirPlay Receiver, so this quietly moves to 5001.
+    port = pick_port(host, requested)
+    url = "http://%s:%d" % (host, port)
 
     print("=" * 70)
     print("  Crane Operator Fatigue Monitor - full system demo")
     print("=" * 70)
+    if port != requested:
+        reason = ("the AirPlay Receiver usually holds it on macOS"
+                  if sys.platform == "darwin" and requested == 5000
+                  else "something else is using it")
+        print("\n  port %d is busy (%s) - using %d instead"
+              % (requested, reason, port))
 
     # ---- 1. control-room server -------------------------------------
     print("\n[1/4] starting control-room server ...")
     server = subprocess.Popen(
-        [PY, "-m", "server.app"], cwd=ROOT,
+        [PY, "-m", "server.app", "--port", str(port)], cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace",
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0)
@@ -122,7 +136,8 @@ def main(argv=None) -> int:
         print("      close its window or press 'q' in it to end the demo\n")
         time.sleep(1.0)
 
-        cmd = [PY, "-m", "edge.node", "--scenario", args.scenario]
+        cmd = [PY, "-m", "edge.node", "--scenario", args.scenario,
+               "--server", url]
         if args.synthetic:
             cmd += ["--backend", "synthetic"]
         if args.headless:

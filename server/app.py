@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import queue
+import socket
 import sys
 import threading
 import time
@@ -32,6 +33,43 @@ from server.database import Database         # noqa: E402
 
 VALID_COMMANDS = {"acknowledge", "recalibrate", "reset_counters",
                   "halt_crane", "pause_operation", "resume"}
+
+
+def port_is_free(host: str, port: int) -> bool:
+    """
+    True if a server can bind this port right now.
+
+    Deliberately does NOT set SO_REUSEADDR. On Windows that option permits
+    binding a port another process is actively listening on, so the probe would
+    report every port as free and the whole fallback would be silently useless.
+    Without it, bind() fails on a port in use on every platform, which is
+    exactly the question being asked.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def pick_port(host: str, preferred: int, attempts: int = 20) -> int:
+    """
+    Return the preferred port, or the next free one above it.
+
+    This exists because of macOS specifically. Since Monterey, the AirPlay
+    Receiver service listens on port 5000 by default - which is also Flask's
+    default. On a Mac the server would either fail to bind or, worse, bind
+    fine while the browser reaches AirPlay instead and shows nothing. Rather
+    than make every Mac user hunt through System Settings, move to 5001.
+    """
+    for offset in range(attempts):
+        candidate = preferred + offset
+        if port_is_free(host, candidate):
+            return candidate
+    return preferred
 
 
 class EventBus:
@@ -283,10 +321,22 @@ def main(argv=None) -> int:
         print("purged %d telemetry rows older than %d days" % (removed, args.purge_days))
         return 0
 
+    requested = port
+    port = pick_port(host, port)
+
     app = create_app(cfg)
     print("=" * 68)
     print("  Crane Operator Fatigue Monitor - control room")
     print("=" * 68)
+    if port != requested:
+        print("  NOTE: port %d was busy, using %d instead." % (requested, port))
+        if sys.platform == "darwin" and requested == 5000:
+            print("        On macOS, port 5000 is usually the AirPlay Receiver.")
+            print("        Turn it off in System Settings > General > AirDrop")
+            print("        & Handoff if you want the default port back.")
+        print("        Point cabin units at this server with:")
+        print("          python -m edge.node --server http://%s:%d" % (host, port))
+        print("-" * 68)
     print("  dashboard : http://%s:%d/" % (host, port))
     print("  report    : http://%s:%d/report" % (host, port))
     print("  database  : %s" % cfg.server.database)

@@ -19,6 +19,7 @@ knows or cares which one is running.
 """
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -73,8 +74,9 @@ class DesktopAlertDriver:
     """
     Bench-top stand-in for the cabin alert unit.
 
-    LED colours become an ANSI-coloured status line; the buzzer becomes a tone
-    on the PC sound card (winsound on Windows, terminal bell elsewhere).
+    LED colours become an ANSI-coloured status line; the buzzer becomes a real
+    sound on the PC audio output - winsound on Windows, afplay on macOS,
+    PulseAudio or ALSA on Linux, with the terminal bell as a last resort.
     """
 
     name = "desktop"
@@ -87,6 +89,15 @@ class DesktopAlertDriver:
 
     @staticmethod
     def _pick_audio():
+        """
+        Find something on this machine that can actually make a noise.
+
+        The buzzer is the part of the demo people in the room notice, so it is
+        worth handling each platform properly rather than falling through to
+        the terminal bell - which most modern terminals render as a silent
+        visual flash, or suppress entirely.
+        """
+        # --- Windows: winsound gives a real tone at a chosen pitch ---------
         if sys.platform.startswith("win"):
             try:
                 import winsound
@@ -104,6 +115,54 @@ class DesktopAlertDriver:
             except Exception:
                 pass
 
+        # --- macOS: afplay a built-in alert sound --------------------------
+        # Two different sounds so Warning and Critical are distinguishable by
+        # ear alone, which is the entire point of an audible alert.
+        if sys.platform == "darwin":
+            import shutil
+            import subprocess
+
+            warn_sound = "/System/Library/Sounds/Ping.aiff"
+            crit_sound = "/System/Library/Sounds/Sosumi.aiff"
+            if shutil.which("afplay") and os.path.exists(warn_sound):
+
+                def beep(duration_ms: int, volume: float) -> None:
+                    sound = crit_sound if volume > 0.6 else warn_sound
+                    try:
+                        subprocess.run(["afplay", "-v", "%.2f" % max(0.1, volume),
+                                        sound], timeout=3.0,
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
+
+                return beep
+
+        # --- Linux: whatever sound player is installed ---------------------
+        if sys.platform.startswith("linux"):
+            import shutil
+            import subprocess
+
+            for player, args in (("paplay", []), ("aplay", ["-q"])):
+                if not shutil.which(player):
+                    continue
+                for candidate in ("/usr/share/sounds/freedesktop/stereo/bell.oga",
+                                  "/usr/share/sounds/alsa/Front_Center.wav"):
+                    if os.path.exists(candidate):
+                        def beep(duration_ms: int, volume: float,
+                                 _player=player, _args=args,
+                                 _sound=candidate) -> None:
+                            try:
+                                subprocess.run([_player] + _args + [_sound],
+                                               timeout=3.0,
+                                               stdout=subprocess.DEVNULL,
+                                               stderr=subprocess.DEVNULL)
+                            except Exception:
+                                pass
+
+                        return beep
+
+        # --- last resort: the terminal bell --------------------------------
         def beep(duration_ms: int, volume: float) -> None:
             sys.stdout.write("\a")
             sys.stdout.flush()
