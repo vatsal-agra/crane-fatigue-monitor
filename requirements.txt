@@ -10,11 +10,24 @@
 numpy>=1.24
 opencv-python>=4.8            # video capture, image ops, Haar fallback, solvePnP
 
-# Facial landmarks. Pin below 1.0: the 1.x line removed the
-# `mediapipe.solutions.face_mesh` API and its bundled model, and replaced it
-# with the Tasks API, which needs a separate model download. The 0.10 line
-# ships everything in the wheel, which matters on a site with no internet.
-mediapipe>=0.10,<1.0
+# Facial landmarks. Two constraints, both deliberate:
+#
+#   <1.0        the 1.x line removed the `mediapipe.solutions.face_mesh` API
+#               and its bundled model, replacing it with the Tasks API, which
+#               needs a separate model download. The 0.10 line ships
+#               everything in the wheel - which matters on a site with no
+#               internet.
+#
+#   <3.13       mediapipe 0.10.x publishes no wheel for Python 3.13+. Without
+#               this marker, `pip install -r requirements.txt` fails outright
+#               on a newer interpreter and NOTHING gets installed - so one
+#               optional component would take the whole project down on a
+#               teammate's laptop. With it, pip simply skips mediapipe and the
+#               system falls back to the OpenCV Haar backend, announcing which
+#               one it selected at startup.
+#
+# Run `python -m tools.check_setup` to see which backend you actually got.
+mediapipe>=0.10,<1.0; python_version < "3.13"
 
 # --- control-room server ---------------------------------------------------
 Flask>=2.3

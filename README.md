@@ -24,7 +24,13 @@ alerting, database logging, supervisor action, and the post-shift report.
 
 ```bash
 pip install -r requirements.txt
+python -m tools.check_setup
 ```
+
+`check_setup` reports what this particular laptop can do — which packages are
+installed, which detection backend will be selected, whether the camera opens —
+so a problem shows up now rather than during the demo. Nothing it flags as
+`[note]` blocks the demo; only `[FAIL]` does.
 
 ```bash
 python run_demo.py
@@ -136,6 +142,7 @@ server/                     the control room
   database.py                 SQLite schema and queries
   templates/, static/         dashboard and shift report (no CDN needed)
 firmware/esp32_sensor_node/ Arduino sketch for the sensor board
+tools/check_setup.py        environment check for a new machine
 tools/simulate_shift.py     demo history generator
 tests/                      65 automated tests
 docs/algorithm.md           the detection logic, and where it departs from
