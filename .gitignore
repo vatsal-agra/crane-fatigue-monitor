@@ -1,0 +1,36 @@
+# --- runtime data ---------------------------------------------------------
+# The shift database and the offline telemetry buffer are generated at run
+# time, not source. The database reaches several MB after one seeded shift and
+# changes on every run, so committing it would bloat the history for no
+# benefit - anyone can regenerate it in about 30 seconds with:
+#     python -m tools.simulate_shift --reset
+data/
+*.db
+*.db-wal
+*.db-shm
+*.jsonl
+
+# --- python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# --- editors / OS ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- captured output ------------------------------------------------------
+# Screenshots and recordings made during a demo. docs/cabin_hud.png is
+# committed deliberately (it is referenced by the documentation); anything
+# else dropped in here is not.
+*.mp4
+*.avi
+screenshots/

@@ -1,0 +1,197 @@
+# ============================================================================
+#  Real-Time Crane Operator Fatigue Detection System
+#  Central configuration - every tunable constant referenced by the algorithm
+#  in Section 8 of the project abstract lives here.
+#
+#  Edit this file to re-tune the system; no source changes required.
+# ============================================================================
+
+system:
+  device_id: "CRANE-01-CABIN"          # unique id of this edge unit
+  crane_id: "TOWER-CRANE-01"
+  site: "Site A - Block 3"
+  # Target processing rate of the main loop (frames / sensor samples per second)
+  target_fps: 15
+
+operator:
+  # Operator currently signed in to this cabin. In production this comes from
+  # an RFID badge tap; for the demo it is set here or via --operator.
+  operator_id: "OP-1043"
+  name: "R. Kumar"
+  shift_start: "08:00"
+  shift_hours: 8
+
+# --------------------------------------------------------------------------
+# Camera / video source
+# --------------------------------------------------------------------------
+camera:
+  source: 0                # webcam index, or a path to a .mp4 file for replay
+  width: 640
+  height: 480
+  flip_horizontal: true    # mirror view is more natural for the operator
+  # If no camera can be opened the node falls back to the synthetic driver so
+  # the pipeline can still be demonstrated end to end.
+  allow_synthetic_fallback: true
+
+# --------------------------------------------------------------------------
+# Calibration - "capture baseline data for operator calibration" (algorithm 2)
+# --------------------------------------------------------------------------
+calibration:
+  duration_s: 8.0          # how long the operator must sit normally at startup
+  min_valid_samples: 30    # reject calibration if fewer good frames than this
+  # Thresholds are derived as a fraction of the operator's own baseline, so the
+  # system adapts to different eye shapes / spectacle wearers automatically.
+  ear_threshold_ratio: 0.72     # eyes considered "closed" below 72% of baseline
+  mar_threshold_ratio: 1.80     # mouth considered "yawning" above 180% of baseline
+  # Fallback absolute thresholds used if calibration is skipped or fails.
+  fallback_ear_threshold: 0.21
+  fallback_mar_threshold: 0.60
+
+  # --- calibration must be able to REJECT a bad baseline -------------------
+  # If the operator sits down already drowsy, or the camera is half obscured,
+  # or they are looking away, a naive average records a near-closed eye as
+  # "normal" and the closure threshold is set so low that no microsleep can
+  # ever trip it. The system would then run all shift reporting Normal while
+  # detecting nothing - a silent failure, which is the worst kind in a safety
+  # device. These two checks make that failure loud instead.
+  plausible_ear_range: [0.15, 0.45]   # credible open-eye EAR for an adult
+  max_closed_fraction: 0.35           # reject if eyes were shut this often
+
+# --------------------------------------------------------------------------
+# Fatigue indicator thresholds - algorithm steps 4 to 9
+# --------------------------------------------------------------------------
+detection:
+  # 4. Operator-not-visible watchdog
+  no_face_frames_alert: 45        # ~3 s at 15 fps
+
+  # 6. Eye closure -> drowsiness_counter
+  eye_closed_seconds: 0.40        # T_eye: continuous closure that counts as a microsleep
+  perclos_window_s: 60.0          # window over which PERCLOS (% eye closure) is measured
+  perclos_warning: 0.15           # 15 % of the window with eyes closed = fatigued
+  perclos_critical: 0.30
+  # PERCLOS is a ratio, so it is meaningless until the window holds enough
+  # data. Below this fraction of the window it is ignored and drowsiness is
+  # scored from discrete microsleep events alone - otherwise the first blink
+  # after startup reads as 100 % eye closure and raises a false alarm.
+  perclos_min_coverage: 0.50
+
+  # 7. Yawn detection -> yawn_counter
+  yawn_min_duration_s: 0.8        # a yawn must be held this long (rejects speech)
+  yawn_refractory_s: 4.0          # ignore re-triggers for this long after a yawn
+
+  # 8. Head tilt / nodding-off -> posture_counter
+  tilt_threshold_deg: 22.0        # pitch or roll beyond this is a nod-off posture
+  tilt_min_duration_s: 0.6
+  tilt_refractory_s: 3.0
+
+  # 9. Heart-rate deviation -> vitals_counter
+  hr_deviation_bpm: 12.0          # deviation from baseline that counts as abnormal
+  hr_low_absolute: 48.0           # absolute bradycardia floor
+  hr_min_duration_s: 5.0
+  hr_refractory_s: 15.0
+
+# --------------------------------------------------------------------------
+# Composite fatigue score - algorithm steps 10 and 11
+#   Fatigue_Score = w1*drowsiness + w2*yawn + w3*posture + w4*vitals
+# Each counter is first normalised to 0..1 by dividing by its saturation count,
+# so the final score is a directly interpretable 0..100 index.
+# --------------------------------------------------------------------------
+scoring:
+  window_s: 60.0                  # evaluation window; counters reset each window (step 15)
+  weights:
+    drowsiness: 0.45
+    yawn:       0.20
+    posture:    0.20
+    vitals:     0.15
+  saturation:                     # counter value that maps to a sub-score of 1.0
+    drowsiness: 6      # 6 microsleep events in a minute = maximum drowsiness
+    yawn:       3
+    posture:    4
+    vitals:     3
+  # A weighted mean on its own can never let one indicator raise the alarm.
+  # With drowsiness weighted 0.45, an operator whose eyes are shut 40 % of the
+  # minute scores at most 45 and is called "Warning" for ever, because the
+  # three quiet indicators dilute the one that matters. That is a safety hole,
+  # so each indicator also carries an escalation ceiling - the score it may
+  # reach on its own evidence alone - and the final score is the greater of the
+  # weighted mean and the strongest single indicator.
+  escalation:
+    drowsiness: 1.00   # eyes shut long enough is conclusive by itself
+    posture:    0.85   # repeated nodding off is nearly as conclusive
+    vitals:     0.60   # abnormal vitals alone warrant a warning, not a halt
+    yawn:       0.50   # yawning alone is a symptom, never a verdict
+  thresholds:
+    low:  30.0        # score <  low            -> Normal
+    high: 60.0        # low <= score < high     -> Warning ; >= high -> Critical
+  # Hysteresis stops the state flickering on the threshold boundary.
+  hysteresis: 6.0
+  # A state must be held this long before it is published as a state change.
+  dwell_s: 2.0
+  # Exponential smoothing applied to the raw score (0 = none, 0.9 = very smooth)
+  smoothing: 0.65
+
+# --------------------------------------------------------------------------
+# Local alert unit - algorithm steps 12 and 13
+# --------------------------------------------------------------------------
+alerts:
+  driver: "auto"          # auto | gpio | desktop | none
+  gpio_pins:              # BCM numbering, used only when driver resolves to gpio
+    led_green: 17
+    led_yellow: 27
+    led_red: 22
+    buzzer: 23
+    vibration: 24
+  warning:
+    beep_pattern_ms: [180, 1200]     # on, off - soft intermittent
+    volume: 0.35
+  critical:
+    beep_pattern_ms: [400, 200]      # on, off - urgent
+    volume: 1.0
+    vibration: true
+
+# --------------------------------------------------------------------------
+# Telemetry to the control room (Wi-Fi / GSM link)
+# --------------------------------------------------------------------------
+telemetry:
+  transport: "http"                       # http | mqtt | none
+  server_url: "http://127.0.0.1:5000"
+  ingest_path: "/api/ingest"
+  command_path: "/api/commands"
+  publish_interval_s: 1.0                 # routine telemetry cadence
+  batch_max: 40
+  # Store-and-forward: if the link drops, samples are buffered on disk and
+  # replayed when connectivity returns (essential on a moving crane).
+  offline_buffer_path: "data/telemetry_buffer.jsonl"
+  offline_buffer_max_records: 20000
+  request_timeout_s: 4.0
+  mqtt:
+    host: "127.0.0.1"
+    port: 1883
+    topic_telemetry: "crane/fatigue/telemetry"
+    topic_events: "crane/fatigue/events"
+
+# --------------------------------------------------------------------------
+# Sensor hub - MAX30100 heart rate + MPU6050 IMU
+# --------------------------------------------------------------------------
+sensors:
+  driver: "auto"          # auto | serial | i2c | simulated
+  sample_rate_hz: 20
+  serial:
+    port: "auto"          # "auto" scans for an ESP32/Arduino, or e.g. "COM5"
+    baud: 115200
+  simulation:
+    # The synthetic operator gets progressively more tired; useful for a
+    # repeatable demo and for the automated tests.
+    baseline_hr: 74.0
+    scenario: "progressive_fatigue"   # alert | progressive_fatigue | microsleep_event
+
+# --------------------------------------------------------------------------
+# Server / dashboard
+# --------------------------------------------------------------------------
+server:
+  host: "127.0.0.1"
+  port: 5000
+  database: "data/fatigue_monitor.db"
+  # Supervisor is notified for these states
+  notify_states: ["Warning", "Critical", "NoOperator"]
+  retention_days: 90

@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Crane Operator Fatigue Monitor - Python dependencies
+#
+#   pip install -r requirements.txt
+#
+# Python 3.9 - 3.12. Tested on 3.11 (Windows) and 3.11 (Raspberry Pi OS).
+# ---------------------------------------------------------------------------
+
+# --- core detection pipeline ----------------------------------------------
+numpy>=1.24
+opencv-python>=4.8            # video capture, image ops, Haar fallback, solvePnP
+
+# Facial landmarks. Pin below 1.0: the 1.x line removed the
+# `mediapipe.solutions.face_mesh` API and its bundled model, and replaced it
+# with the Tasks API, which needs a separate model download. The 0.10 line
+# ships everything in the wheel, which matters on a site with no internet.
+mediapipe>=0.10,<1.0
+
+# --- control-room server ---------------------------------------------------
+Flask>=2.3
+requests>=2.31                # edge -> server telemetry uplink
+PyYAML>=6.0                   # configuration
+
+# --- optional extras -------------------------------------------------------
+# Uncomment the ones the deployment actually needs.
+#
+# pyserial>=3.5               # ESP32 / Arduino sensor node over USB serial
+# paho-mqtt>=1.6              # MQTT telemetry transport instead of HTTP
+# smbus2>=0.4                 # MPU6050 wired directly to a Raspberry Pi I2C bus
+# RPi.GPIO>=0.7               # real LEDs / buzzer / vibration motor (Pi only)
+#
+# The system runs without every one of these: edge/sensors.py and edge/alerts.py
+# fall back to simulation and report which driver they actually selected.

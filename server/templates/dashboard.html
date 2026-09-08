@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-low="{{ cfg.scoring.thresholds.low }}" data-high="{{ cfg.scoring.thresholds.high }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crane Fatigue Monitor — Control Room</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏗️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>CRANE OPERATOR FATIGUE MONITOR</h1>
+    <span>Control room · {{ cfg.system.site }}</span>
+  </div>
+  <nav>
+    <a href="/" class="active">Live</a>
+    <a href="/report">Shift report</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="conn">
+    <span class="dot" id="conn-dot"></span>
+    <span id="conn-text">connecting…</span>
+    <span id="clock" style="margin-left:14px"></span>
+  </div>
+</header>
+
+<main>
+  <div class="layout">
+
+    <!-- ================= left column ================= -->
+    <div class="grid">
+
+      <section class="panel">
+        <h2>Cabin units <span class="count" id="device-count"></span></h2>
+        <div class="body">
+          <div class="grid cols-3" id="devices">
+            <div class="empty">No cabin units reporting yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="detail-panel" hidden>
+        <h2>Operator status <span class="count" id="detail-updated"></span></h2>
+
+        <div class="hero">
+          <div class="who">
+            <div class="id" id="d-operator">—</div>
+            <div class="sub" id="d-device">—</div>
+            <div style="margin-top:8px"><span class="badge s-Normal" id="d-badge">NORMAL</span></div>
+          </div>
+
+          <div class="big-score"><span id="d-score">0</span><small>/100</small></div>
+
+          <div class="gauge">
+            <div class="gauge-track"><div class="gauge-fill" id="d-gauge"></div></div>
+            <div class="gauge-scale">
+              <span>0</span>
+              <span>{{ cfg.scoring.thresholds.low }} warning</span>
+              <span>{{ cfg.scoring.thresholds.high }} critical</span>
+              <span>100</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="reasons" id="d-reasons"></div>
+
+        <div class="body" style="padding-top:0">
+          <div class="tiles" id="d-tiles"></div>
+        </div>
+
+        <div class="note" id="d-provenance"></div>
+      </section>
+
+      <div class="grid cols-2">
+        <section class="panel">
+          <h2>Indicator counters <span class="count">sliding {{ cfg.scoring.window_s|int }} s window</span></h2>
+          <div class="body" id="d-indicators">
+            <div class="empty">—</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Supervisor actions</h2>
+          <div class="body">
+            <div class="btn-row">
+              <button class="btn" data-cmd="acknowledge">Acknowledge alert</button>
+              <button class="btn" data-cmd="recalibrate">Recalibrate baseline</button>
+              <button class="btn" data-cmd="reset_counters">Reset counters</button>
+              <button class="btn warn" data-cmd="pause_operation">Request rotation</button>
+              <button class="btn danger" data-cmd="halt_crane">Halt crane</button>
+              <button class="btn" data-cmd="resume">Resume</button>
+            </div>
+            <div id="cmd-result" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+          </div>
+          <div class="note">
+            A halt command raises the in-cabin alarm and is logged for the shift
+            record. It is advisory — this project does not interlock the crane
+            drive, which would require a rated safety controller.
+          </div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>Fatigue score
+          <span class="count">
+            <select id="range-select">
+              <option value="5">last 5 min</option>
+              <option value="15" selected>last 15 min</option>
+              <option value="60">last hour</option>
+              <option value="480">full shift</option>
+            </select>
+          </span>
+        </h2>
+        <div class="chart-wrap"><canvas class="chart" id="chart-score"></canvas></div>
+        <div class="legend">
+          <span><i style="background:var(--blue)"></i>Composite fatigue score</span>
+          <span><i style="background:var(--green-dim)"></i>Normal</span>
+          <span><i style="background:var(--amber-dim)"></i>Warning</span>
+          <span><i style="background:var(--red-dim)"></i>Critical</span>
+        </div>
+      </section>
+
+      <div class="grid cols-2">
+        <section class="panel">
+          <h2>Eye &amp; mouth aspect ratios</h2>
+          <div class="chart-wrap"><canvas class="chart" id="chart-ear"></canvas></div>
+          <div class="legend">
+            <span><i style="background:var(--green)"></i>EAR (eye openness)</span>
+            <span><i style="background:var(--blue)"></i>MAR (mouth opening)</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Heart rate &amp; PERCLOS</h2>
+          <div class="chart-wrap"><canvas class="chart" id="chart-vitals"></canvas></div>
+          <div class="legend">
+            <span><i style="background:var(--red)"></i>Heart rate (bpm)</span>
+            <span><i style="background:var(--magenta)"></i>PERCLOS (%)</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- ================= right column ================= -->
+    <div class="grid">
+      <section class="panel">
+        <h2>Alert feed <span class="count" id="alert-count"></span></h2>
+        <div class="body tight">
+          <div class="feed" id="feed">
+            <div class="empty">No alerts yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Command log</h2>
+        <div class="body tight">
+          <div class="feed" id="cmdlog" style="max-height:220px">
+            <div class="empty">No commands issued.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+</main>
+
+<script type="module" src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" data-low="{{ cfg.scoring.thresholds.low }}" data-high="{{ cfg.scoring.thresholds.high }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shift Report — Crane Fatigue Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏗️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>SHIFT FATIGUE REPORT</h1>
+    <span>Post-shift summary · {{ cfg.system.site }}</span>
+  </div>
+  <nav>
+    <a href="/">Live</a>
+    <a href="/report" class="active">Shift report</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="conn">
+    <select id="device-select"><option value="">All cabin units</option></select>
+    <select id="hours-select">
+      <option value="1">Last hour</option>
+      <option value="8" selected>Last 8 hours (shift)</option>
+      <option value="24">Last 24 hours</option>
+      <option value="168">Last 7 days</option>
+    </select>
+    <button class="btn small" id="refresh">Refresh</button>
+    <button class="btn small" id="print">Print / PDF</button>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+
+    <div class="grid cols-4" id="summary-tiles"></div>
+
+    <section class="panel">
+      <h2>Time spent in each fatigue state</h2>
+      <div class="body">
+        <canvas class="chart" id="chart-states"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Mean fatigue score by hour of day
+        <span class="count">the output that feeds back into rostering</span></h2>
+      <div class="chart-wrap"><canvas class="chart" id="chart-hourly"></canvas></div>
+      <div class="legend">
+        <span><i style="background:var(--green)"></i>Normal</span>
+        <span><i style="background:var(--amber)"></i>Above warning threshold</span>
+        <span><i style="background:var(--red)"></i>Above critical threshold</span>
+      </div>
+      <div class="note" id="hourly-insight"></div>
+    </section>
+
+    <div class="grid cols-2">
+      <section class="panel">
+        <h2>Alerts by type</h2>
+        <div class="body tight"><table id="events-table">
+          <thead><tr><th>Event</th><th>Severity</th><th class="num">Count</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </section>
+
+      <section class="panel">
+        <h2>Operators in this window</h2>
+        <div class="body tight"><table id="operators-table">
+          <thead><tr>
+            <th>Operator</th><th class="num">Samples</th>
+            <th class="num">Mean</th><th class="num">Peak</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Recorded alerts</h2>
+      <div class="body tight"><table id="log-table">
+        <thead><tr>
+          <th>Time</th><th>Unit</th><th>Operator</th>
+          <th>Event</th><th>Detail</th><th class="num">Score</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+
+  </div>
+</main>
+
+<script type="module" src="{{ url_for('static', filename='js/report.js') }}"></script>
+</body>
+</html>
